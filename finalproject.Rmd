@@ -1,0 +1,104 @@
+---
+title: "Final Project"
+author: "Yuyue Jiang"
+date: "May 22, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background Information
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In the Weight Lifting Exercises dataset(http://groupware.les.inf.puc-rio.br/har), six young health participants were asked to perform barbell lifts correctly and incorrectly in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).The data were collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+
+The goal of your project is to predict the manner in which they did the exercise. The output variable is "classie" which is a symbolic variable.
+
+## Data Processing
+* **Preparing Data**
+```{r cars, message=FALSE, warning=FALSE}
+# 1.load the packages.
+library(caret)
+library(rpart)
+library(gbm)
+library(randomForest)
+library(plyr)
+# 2.import data, changing the meaningless values to "na".
+training_data<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",header = TRUE, na.strings=c("NA","#DIV/0!",""))
+testing_data<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",header = TRUE, na.strings=c("NA","#DIV/0!",""))
+```
+
+* **Cleaning Data**
+```{r}
+# 1.remove unwanted variables
+training<-training_data[,-(1:7)]
+
+# 2.remove variables with too many missing values.
+# 1) count missing values in each column
+find.na<-apply(training,2,function(x) sum(is.na(x)))
+# 2) calculate the % of nas in each column
+percent.na<-find.na/nrow(training)
+# 3) remove the columns with more than 90% of missing values.
+unwantedcolumns<-which(percent.na>.9)
+training<-training[,-(unwantedcolumns)]
+```
+
+## Modeling 
+* **Spliting Data**
+```{r}
+inTrain<-createDataPartition(y=training$classe,p=0.7,list=FALSE)
+train<-training[inTrain,]
+test<-training[-inTrain,]
+```
+* **10 fold cross validation**
+```{r}
+# define training control
+train_control<- trainControl(method="cv", number=10)
+```
+* **Build prediction models**
+
+  The output variabe has arity of five,so we need classification models for multi-class prediction
+  the tree models used are:
+  1.Decision trees 
+  2.Stochastic gradient boosting trees
+  3.Random forest decision trees
+```{r, message=FALSE, warning=FALSE, results="hide"}
+# build a decision tree model
+model_rpart<-train(classe~.,data=train, method ="rpart",trControl=train_control)
+# build a Stochastic gradient boosting tree model
+model_gbm<-train(classe~.,data=train, method ="gbm",trControl=train_control)
+# build a random forest model
+model_rf<-train(classe~.,data=train, method ="rf",trControl=train_control)
+
+```
+### Models assessment (Out of sample error)
+```{r}
+# constructing consusion matrix for three models
+predict_rpart<-predict(model_rpart,test)
+conf_rpart<-confusionMatrix(test$classe,predict_rpart)
+
+predict_gbm<-predict(model_gbm,test)
+conf_gbm<-confusionMatrix(test$classe,predict_gbm)
+
+predict_rf<-predict(model_rf,test)
+conf_rf<-confusionMatrix(test$classe,predict_rf)
+
+# extract accuracy from confusion matrix
+conf_rpart$overall[1]
+conf_gbm$overall[1]
+conf_rf$overall[1]
+
+result<-data.frame(modelname=c("rpart","gbm","rf"), accuracy=c(conf_rpart$overall[1], conf_gbm$overall[1],conf_rf$overall[1]))
+print(result)
+```
+We can see from the above result that Randomforest and Stochastic gradient boosting model both did a good job compared to decision tree.
+However Randomforest performed slightly better than gbm model.
+
+### Predicting testing data using random forest
+```{r}
+prediction<-predict(model_rf,testing_data[,-ncol(testing_data)])
+predictionresults<-data.frame(problem_id=testing_data$problem_id,predicted=prediction)
+print(predictionresults)
+```
